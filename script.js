@@ -1,334 +1,459 @@
-// Seed global noise (noisejs)
-        if (typeof noise !== 'undefined') {
-            noise.seed(Math.random());
-        }
+// Constants
+const MAX_ANGLES = 16384;
+const BIG_MYSTERY = 1800;
 
-        //scene setup
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x000000);
+// Settings
+let settings = {
+    speed: 1.0,
+    streamCount: 8,
+    maxParticles: 300,
+    bloomStrength: 1.5,
+    cameraDistance: 15
+};
+
+// Scene setup
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
+
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.set(0, 0, settings.cameraDistance);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// Post-processing
+const composer = new THREE.EffectComposer(renderer);
+const renderScene = new THREE.RenderPass(scene, camera);
+composer.addPass(renderScene);
+
+const bloomPass = new THREE.UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    settings.bloomStrength,
+    0.8,
+    0.3
+);
+composer.addPass(bloomPass);
+
+// Create particle texture
+function createParticleTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    
+    const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    gradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.6)');
+    gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.2)');
+    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 64, 64);
+    
+    return new THREE.CanvasTexture(canvas);
+}
+
+const particleTexture = createParticleTexture();
+
+// Star class
+class Star {
+    constructor() {
+        this.pos = new THREE.Vector3(0, 0, 0);
+        this.oldPos = new THREE.Vector3(0, 0, 0);
+        this.mystery = Math.random() * 10.0;
+        this.rotSpeed = 0.4 + Math.random() * 0.5;
+    }
+
+    update(time) {
+        this.oldPos.copy(this.pos);
         
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 0, 10);
+        const rotsPerSecond = (2 * Math.PI * 12 / MAX_ANGLES) * this.rotSpeed * settings.speed;
+        const thisAngle = time * rotsPerSecond;
+
+        let cf = Math.cos(7 * thisAngle) + Math.cos(3 * thisAngle) + Math.cos(13 * thisAngle);
+        cf /= 6;
+        cf += 0.75;
+
+        const thisPointInRads = 2.0 * Math.PI * this.mystery / BIG_MYSTERY;
+
+        let x = 250 * cf * Math.cos(11 * (thisPointInRads + (3 * thisAngle)));
+        let y = 250 * cf * Math.sin(12 * (thisPointInRads + (4 * thisAngle)));
+        let z = 250 * Math.cos(23 * (thisPointInRads + (4 * thisAngle)));
+
+        let rot = thisAngle * 0.501 + 5.01 * this.mystery / BIG_MYSTERY;
+        let cr = Math.cos(rot);
+        let sr = Math.sin(rot);
+
+        let tmpX1 = x * cr - y * sr;
+        let tmpY1 = y * cr + x * sr;
+
+        let tmpX2 = tmpX1 * cr - z * sr;
+        let tmpZ2 = z * cr + tmpX1 * sr;
+
+        let tmpY3 = tmpY1 * cr - tmpZ2 * sr;
+        let tmpZ3 = tmpZ2 * cr + tmpY1 * sr + 50;
+
+        rot = thisAngle * 2.501 + 85.01 * this.mystery / BIG_MYSTERY;
+        cr = Math.cos(rot);
+        sr = Math.sin(rot);
+
+        this.pos.x = (tmpX2 * cr - tmpY3 * sr) * 0.02;
+        this.pos.y = (tmpY3 * cr + tmpX2 * sr) * 0.02;
+        this.pos.z = tmpZ3 * 0.02;
+    }
+}
+
+// Spark class
+class Spark {
+    constructor(streamIndex, totalStreams) {
+        this.pos = new THREE.Vector3(0, 0, 0);
+        this.mystery = (BIG_MYSTERY * (streamIndex + 1)) / totalStreams;
+        this.fieldRange = 1.0;
+        this.fieldSpeed = 12.0;
+    }
+
+    update(time, star) {
+        const rotsPerSecond = 2 * Math.PI * this.fieldSpeed / MAX_ANGLES * settings.speed;
+        const thisAngle = time * rotsPerSecond;
+        const thisPointInRadians = 2 * Math.PI * this.mystery / BIG_MYSTERY;
         
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.toneMapping = THREE.ReinhardToneMapping;
-        document.body.appendChild(renderer.domElement);
+        let cf = (Math.cos(7 * thisAngle) + Math.cos(3 * thisAngle) + Math.cos(13 * thisAngle));
+        cf /= 6.0;
+        cf += 2.0;
+        
+        let x = this.fieldRange * 10 * cf * Math.cos(11.0 * (thisPointInRadians + (3.0 * thisAngle)));
+        let y = this.fieldRange * 10 * cf * Math.sin(12.0 * (thisPointInRadians + (4.0 * thisAngle)));
+        let z = this.fieldRange * 10 * Math.cos(23.0 * (thisPointInRadians + (12.0 * thisAngle)));
+        
+        let rotation = thisAngle * 0.501 + 5.01 * this.mystery / BIG_MYSTERY;
+        let cr = Math.cos(rotation);
+        let sr = Math.sin(rotation);
+        
+        let tmpX1 = x * cr - y * sr;
+        let tmpY1 = y * cr + x * sr;
+        let tmpZ1 = z;
+        
+        let tmpX2 = tmpX1 * cr - tmpZ1 * sr;
+        let tmpZ2 = tmpZ1 * cr + tmpX1 * sr;
+        
+        let tmpY3 = tmpY1 * cr - tmpZ2 * sr;
+        let tmpZ3 = tmpZ2 * cr + tmpY1 * sr + 50;
+        
+        rotation = thisAngle * 2.501 + 85.01 * this.mystery / BIG_MYSTERY;
+        cr = Math.cos(rotation);
+        sr = Math.sin(rotation);
+        
+        let tmpX4 = tmpX2 * cr - tmpY3 * sr;
+        let tmpY4 = tmpY3 * cr + tmpX2 * sr;
+        
+        this.pos.x = star.pos.x + tmpX4 * 0.02;
+        this.pos.y = star.pos.y + tmpY4 * 0.02;
+        this.pos.z = star.pos.z + tmpZ3 * 0.02;
+    }
+}
 
-        const centerPos = new THREE.Vector3(0, 0, 0);
-in
-        // Post-processing setup —— BLOOM IMPLEMENTATION ====
-        const composer = new THREE.EffectComposer(renderer);
-        const renderScene = new THREE.RenderPass(scene, camera);
-        composer.addPass(renderScene);
-
-        // UnrealBloomPass parameters: resolution, strength, radius, threshold
-        const bloomPass = new THREE.UnrealBloomPass(
-            new THREE.Vector2(window.innerWidth, window.innerHeight),
-            0.8,   // strength (higher = more glow)
-            1.0,   // radius (spread of glow)
-            0.1   // threshold (brightness cutoff)
-        );
-        composer.addPass(bloomPass);
-        // =================================================
-
-        // NEW – Motion trail effect - fade layer ==============
-        const fadeGeometry = new THREE.PlaneGeometry(100, 100);
-        const fadeMaterial = new THREE.MeshBasicMaterial({
-            color: 0x000000,
+// Particle Stream using Points
+class ParticleStream {
+    constructor(color, sparkIndex) {
+        this.color = color;
+        this.sparkIndex = sparkIndex;
+        this.positions = [];
+        this.colors = [];
+        this.sizes = [];
+        this.ages = [];
+        
+        this.geometry = new THREE.BufferGeometry();
+        this.material = new THREE.PointsMaterial({
+            size: 0.4,
+            map: particleTexture,
             transparent: true,
-            opacity: 0.15,  // Lower = longer trails
-            depthWrite: false
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            vertexColors: true,
+            sizeAttenuation: true
         });
-        const fadePlane = new THREE.Mesh(fadeGeometry, fadeMaterial);
-        fadePlane.position.z = -5;
-        camera.add(fadePlane);
-        scene.add(camera);
-        // =====================================================
-
-        //ribbon stream class - anchored at center
-        class RibbonStream {
-            constructor(color, baseAngle, streamId) {
-                this.color = color;
-                this.baseAngle = baseAngle;
-                this.streamId = streamId;
-                // this.segmentCount = 120 + Math.floor(Math.random() * 60); //number of particles in the ribbon
-
-                this.segmentCount = 40; // number of segments
-
-                // Random direction vector for star-like spread
-                this.direction = new THREE.Vector3(
-                    Math.cos(baseAngle),
-                    Math.sin(baseAngle),
-                    (Math.random() - 0.5) * 0.5
-                ).normalize();
-
-                //connected ribbon geometry
-                this.geometry = new THREE.BufferGeometry();
-                this.positions = new Float32Array(this.segmentCount * 3);
-                this.colors = new Float32Array(this.segmentCount * 3);
-                // this.positions = new Float32Array(this.segmentCount * 2 * 3); // 2 points per segment
-                // this.colors = new Float32Array(this.segmentCount * 2 * 3);
-
-
-                
-                //random motion parameters for semi-erratic movement, flow speed
-                this.noiseOffset = Math.random() * 100;
-                // this.flowSpeed = 1.5 + Math.random() * 0.3; //1.5 and 0.3
-
-                this.flowSpeed = 2.8 + Math.random() * 0.4;  // Speed of bending animation (0.4)
-                this.rotationSpeed = 0.3 + Math.random() * 0.4;  // Speed of rotation
-                this.bendAmount = 2.0 + Math.random() * 1.5;  // How much it bends
-                
-                
-                //NEW - IMPLEMENT TUBE GEOMETRY using mesh material
-                // Material for the ribbon tube
-                this.material = new THREE.MeshBasicMaterial({
-                    color: this.color,
-                    transparent: true,
-                    opacity: 0.8,
-                    blending: THREE.AdditiveBlending,
-                    side: THREE.DoubleSide,
-                    depthWrite: false,
-                    vertexColors: true
-                });
-
-                this.mesh = null;
-                //=====================================================
-            }
-
-            // Generate points along the ribbon path
-            generatePathPoints(time, centerPos) {
-                const flowTime = time * this.flowSpeed;
-                const points = [];
-                
-                // NEW – Add rotation over time - this makes ribbons twist around their axis
-                const rotationAngle = time * this.rotationSpeed;
-                const rotationMatrix = new THREE.Matrix4().makeRotationZ(rotationAngle * 0.5);
-                const rotatedDirection = this.direction.clone().applyMatrix4(rotationMatrix);
-                // ===========================================================================
-
-                for (let i = 0; i < this.segmentCount; i++) {
-                    const t = i / (this.segmentCount - 1);
-                    const distance = t * 5;
-                    
-
-                    let x = rotatedDirection.x * distance;
-                    let y = rotatedDirection.y * distance;
-                    let z = rotatedDirection.z * distance;
-                    
-                    // Add Perlin noise for smooth, flowing curves
-                    if (typeof noise !== 'undefined') {
-
-                        // NEW IMPROVEMENT - These noise values change over time, making ribbons bend continuously
-                        const bendX = noise.perlin3(flowTime * 0.5 + t * 2, this.noiseOffset, t * 3);
-                        const bendY = noise.perlin3(flowTime * 0.4 + t * 2, this.noiseOffset + 50, t * 3);
-                        const bendZ = noise.perlin3(flowTime * 0.45 + t * 2, this.noiseOffset + 100, t * 3);
-                        // ===========================================================================
-                        
-                        // const bendStrength = Math.pow(t, 1.5) * this.bendAmount;
-                        const bendStrength = distance * 2.5; //NEW IMPROVEMENT
-
-                        x += bendX * bendStrength;
-                        y += bendY * bendStrength;
-                        z += bendZ * bendStrength;
-                        
-                        // NEW - Add secondary wave motion for more fluid movement ====================
-                        // const waveX = Math.sin(flowTime * 2 + t * Math.PI * 3) * 0.5 * t;
-                        // const waveY = Math.cos(flowTime * 1.8 + t * Math.PI * 2.5) * 0.5 * t;
-                        // const waveZ = Math.sin(flowTime * 2.2 + t * Math.PI * 2) * 0.3 * t;
-
-                        //NEW IMPROVEMENTS
-                        const wavePhase = flowTime * 1.5;
-                        const waveX = Math.sin(wavePhase + t * Math.PI * 2) * distance * 0.8;
-                        const waveY = Math.cos(wavePhase * 0.8 + t * Math.PI * 1.5) * distance * 0.8;
-                        const waveZ = Math.sin(wavePhase * 1.2 + t * Math.PI * 1.8) * distance * 0.4;
-
-                        x += waveX;
-                        y += waveY;
-                        z += waveZ;
-
-                        // rotation component
-                        const rotationAmount = flowTime * this.rotationSpeed;
-                        const rotX = Math.cos(rotationAmount + t * Math.PI) * distance * 0.3;
-                        const rotY = Math.sin(rotationAmount + t * Math.PI) * distance * 0.3;
-
-                        x += rotX;
-                        y += rotY;
-
-                        // ===========================================================================
-
-                        // NEW IMPROVEMENT – Add tertiary wobble for organic feel
-                        const wobbleX = noise.perlin3(flowTime * 1.2, t * 5, this.noiseOffset + 150);
-                        const wobbleY = noise.perlin3(flowTime * 1.0, t * 5, this.noiseOffset + 200);
-                        const wobbleZ = noise.perlin3(flowTime * 1.1, t * 5, this.noiseOffset + 250);
-                        // ===========================================================================
-
-                        // // Secondary wobble noise
-                        // const wobbleX = noise.perlin3(flowTime * 0.3, t * 2.5, this.noiseOffset + 150);
-                        // const wobbleY = noise.perlin3(flowTime * 0.28, t * 2.5, this.noiseOffset + 200);
-                        // const wobbleZ = noise.perlin3(flowTime * 0.32, t * 2.5, this.noiseOffset + 250);
-                        
-                        const wobbleStrength = Math.pow(t, 2) * 0.8;
-                        x += wobbleX * wobbleStrength;
-                        y += wobbleY * wobbleStrength;
-                        z += wobbleZ * wobbleStrength;
-                    }
-                    
-                    points.push(new THREE.Vector3(
-                        centerPos.x + x,
-                        centerPos.y + y,
-                        centerPos.z + z
-                    ));
-                }
-                
-                return points;
-            }
-
-            //NEW – IMPLEMENT UPDATE WITH TUBE GEOMETRY
-            update(time, centerPos) {
-                // Remove old mesh if it exists
-                if (this.mesh) {
-                    scene.remove(this.mesh);
-                    this.mesh.geometry.dispose();
-                }
-                
-                // Generate points and create smooth curve
-                const points = this.generatePathPoints(time, centerPos);
-                const curve = new THREE.CatmullRomCurve3(points);
-                
-                // Create tube geometry along the curve
-                // TubeGeometry(path, tubularSegments, radius, radialSegments, closed)
-                const geometry = new THREE.TubeGeometry(curve, 64, 0.08, 8, false); //64
-                
-                // Create gradient colors for vertices
-                const colors = [];
-                const positionAttribute = geometry.attributes.position;
-                
-                for (let i = 0; i < positionAttribute.count; i++) {
-                    // Calculate progress along the tube (0 = center, 1 = tip)
-                    const segmentIndex = Math.floor(i / (8 + 1)); // radialSegments + 1
-                    const totalSegments = 64; // tubularSegments
-                    const t = segmentIndex / totalSegments;
-                    
-                    // Fade brightness from center to tip with soft falloff
-                    const fade = Math.pow(1 - t, 0.4);
-                    const brightness = 4.0;
-                    
-                    colors.push(
-                        this.color.r * fade * brightness,
-                        this.color.g * fade * brightness,
-                        this.color.b * fade * brightness
-                    );
-                }
-                
-                geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-                
-                // Create mesh and add to scene
-                this.mesh = new THREE.Mesh(geometry, this.material);
-                scene.add(this.mesh);
-            }
-            //==================================================================
-        }
-
-        //create multiple ribbon streams from the center
-        const streamCount = 12;
-        const streams = [];
         
-        const colors = [
-            new THREE.Color(0xff6b9d),  //pink
-            new THREE.Color(0x4ecdc4),  //cyan
-            new THREE.Color(0xffd93d),  //yellow
-            new THREE.Color(0x95e1d3),  //mint
-            new THREE.Color(0xc77dff),  //purple
-            new THREE.Color(0xff9a76)   //orange
-        ];
+        this.points = new THREE.Points(this.geometry, this.material);
+        scene.add(this.points);
+    }
 
-        // Distribute streams evenly in all directions (star pattern)
-        for (let i = 0; i < streamCount; i++) {
-            const phi = Math.acos(-1 + (2 * i) / streamCount);
-            const theta = Math.sqrt(streamCount * Math.PI) * phi;
-            
-            streams.push(new RibbonStream(
-                colors[i % colors.length],
-                theta,
-                i
-            ));
+    addParticle(star, spark) {
+        if (this.positions.length / 3 >= settings.maxParticles) {
+            // Remove oldest particle
+            this.positions.splice(0, 3);
+            this.colors.splice(0, 3);
+            this.sizes.shift();
+            this.ages.shift();
         }
 
-        //add a glowing center point
-        const centerGeometry = new THREE.SphereGeometry(0.12, 16, 16);
-        const centerMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0xffffff,
-            transparent: true,
-            opacity: 1.0,
-            blending: THREE.AdditiveBlending
-        });
-        const centerSphere = new THREE.Mesh(centerGeometry, centerMaterial);
-        scene.add(centerSphere);
-
-        // // Add outer glow ring for center
-        // const glowGeometry = new THREE.SphereGeometry(0.2, 16, 16);
-        // const glowMaterial = new THREE.MeshBasicMaterial({
-        //     color: 0xaaaaff,
-        //     transparent: true,
-        //     opacity: 0.5,
-        //     blending: THREE.AdditiveBlending
-        // });
-        // const glowSphere = new THREE.Mesh(glowGeometry, glowMaterial);
-        // scene.add(glowSphere);
-
-        //handle window resize
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            //NEW —— BLOOM
-            composer.setSize(window.innerWidth, window.innerHeight);
-        });
-
-
-        let time = 0;
+        // Initial velocity toward spark
+        const toSpark = new THREE.Vector3().subVectors(spark.pos, star.pos);
+        const vel = toSpark.normalize().multiplyScalar(0.15);
         
-        function animate() {
-            requestAnimationFrame(animate);
-            
-            time += 0.016; //60 fps?
-            
-            //move the center around smoothly (change speed of the graphic here)
-            centerPos.x = Math.sin(time * 0.8) * 2.5;   //horizontal drift 0.5
-            centerPos.y = Math.cos(time * 0.6) * 2.0;   //vertical drift 0.3
-            centerPos.z = Math.sin(time * 0.5) * 1.5;   //depth drift 0.2
+        this.positions.push(star.pos.x, star.pos.y, star.pos.z);
+        this.colors.push(this.color.r, this.color.g, this.color.b);
+        this.sizes.push(1.0);
+        this.ages.push({
+            age: 0,
+            velocity: vel,
+            targetPos: spark.pos.clone()
+        });
+    }
 
-            //update all ribbon streams
-            streams.forEach(stream => stream.update(time, centerPos));
-
+    update(deltaTime, spark) {
+        // Update particle physics
+        for (let i = 0; i < this.ages.length; i++) {
+            const particle = this.ages[i];
+            particle.age += deltaTime;
             
-            //move the sphere to match
-            centerSphere.position.copy(centerPos);
-            // glowSphere.position.copy(centerPos);
-
-
-            camera.position.lerp(new THREE.Vector3(
-                Math.sin(time * 0.04) * 5,
-                Math.cos(time * 0.03) * 3,
-                Math.cos(time * 0.04) * 10
-            ), 0.05);
+            const idx = i * 3;
+            const pos = new THREE.Vector3(
+                this.positions[idx],
+                this.positions[idx + 1],
+                this.positions[idx + 2]
+            );
             
-            camera.lookAt(0, 0, 0);
+            // Gentle attraction to spark
+            const toSpark = new THREE.Vector3().subVectors(spark.pos, pos);
+            const dist = toSpark.length();
+            if (dist > 0.1) {
+                const force = toSpark.normalize().multiplyScalar(0.08 * deltaTime);
+                particle.velocity.add(force);
+            }
             
-            //pulse the center sphere slightly
-            const pulse = 1 + Math.sin(time * 3) * 0.10; //0.15
-            centerSphere.scale.set(pulse, pulse, pulse);
-
-            // // Pulse glow independently
-            // const glowPulse = 1 + Math.sin(time * 2.5) * 0.2; //0.2
-            // glowSphere.scale.set(glowPulse, glowPulse, glowPulse);
+            // Apply drag
+            particle.velocity.multiplyScalar(0.98);
             
-            // renderer.render(scene, camera);
-            //NEW –– BLOOM IMPLEMENTATION
-            composer.render();
-
+            // Update position
+            pos.add(particle.velocity.clone().multiplyScalar(deltaTime * 60));
+            this.positions[idx] = pos.x;
+            this.positions[idx + 1] = pos.y;
+            this.positions[idx + 2] = pos.z;
+            
+            // Fade and shrink over time
+            const lifeFactor = 1 - Math.min(particle.age / 3.0, 1.0);
+            const fade = Math.pow(lifeFactor, 0.5);
+            
+            this.colors[idx] = this.color.r * fade * 1.5;
+            this.colors[idx + 1] = this.color.g * fade * 1.5;
+            this.colors[idx + 2] = this.color.b * fade * 1.5;
+            
+            this.sizes[i] = 1.0 * (0.3 + lifeFactor * 0.7);
         }
+        
+        // Update geometry
+        this.geometry.setAttribute('position', new THREE.Float32BufferAttribute(this.positions, 3));
+        this.geometry.setAttribute('color', new THREE.Float32BufferAttribute(this.colors, 3));
+        this.geometry.setAttribute('size', new THREE.Float32BufferAttribute(this.sizes, 1));
+        this.geometry.attributes.position.needsUpdate = true;
+        this.geometry.attributes.color.needsUpdate = true;
+        this.geometry.attributes.size.needsUpdate = true;
+    }
 
-        animate();
+    rebuild(newColor) {
+        this.color = newColor;
+        scene.remove(this.points);
+        this.points = new THREE.Points(this.geometry, this.material);
+        scene.add(this.points);
+    }
+}
+
+// Initialize
+const star = new Star();
+let sparks = [];
+let streams = [];
+
+const colorPresets = {
+    classic: [
+        new THREE.Color(0xff6b9d),
+        new THREE.Color(0x4ecdc4),
+        new THREE.Color(0xffd93d),
+        new THREE.Color(0x95e1d3),
+        new THREE.Color(0xc77dff),
+        new THREE.Color(0xff9a76)
+    ],
+    intense: [
+        new THREE.Color(0xff0066),
+        new THREE.Color(0x00ffff),
+        new THREE.Color(0xffff00),
+        new THREE.Color(0xff00ff),
+        new THREE.Color(0x00ff00),
+        new THREE.Color(0xff9900)
+    ],
+    gentle: [
+        new THREE.Color(0xb8d4e8),
+        new THREE.Color(0xd4b8e8),
+        new THREE.Color(0xe8d4b8),
+        new THREE.Color(0xb8e8d4),
+        new THREE.Color(0xe8b8d4),
+        new THREE.Color(0xd4e8b8)
+    ],
+    psychedelic: [
+        new THREE.Color(0xff0099),
+        new THREE.Color(0x00ff99),
+        new THREE.Color(0x9900ff),
+        new THREE.Color(0x99ff00),
+        new THREE.Color(0x0099ff),
+        new THREE.Color(0xff9900)
+    ]
+};
+
+let currentColors = colorPresets.classic;
+
+function initStreams() {
+    // Clear existing
+    streams.forEach(s => scene.remove(s.points));
+    streams = [];
+    sparks = [];
+    
+    // Create new
+    for (let i = 0; i < settings.streamCount; i++) {
+        sparks.push(new Spark(i, settings.streamCount));
+        streams.push(new ParticleStream(currentColors[i % currentColors.length], i));
+    }
+}
+
+initStreams();
+
+// Center glow
+const glowGeometry = new THREE.SphereGeometry(0.3, 16, 16);
+const glowMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.8,
+    blending: THREE.AdditiveBlending
+});
+const glowSphere = new THREE.Mesh(glowGeometry, glowMaterial);
+scene.add(glowSphere);
+
+// Animation loop
+let time = 0;
+let emissionTimer = 0;
+const EMISSION_RATE = 1 / 60;
+
+function animate() {
+    requestAnimationFrame(animate);
+    
+    const deltaTime = 0.016;
+    time += deltaTime;
+    emissionTimer += deltaTime;
+    
+    star.update(time);
+    sparks.forEach(spark => spark.update(time, star));
+    
+    while (emissionTimer >= EMISSION_RATE) {
+        streams.forEach((stream, i) => stream.addParticle(star, sparks[i]));
+        emissionTimer -= EMISSION_RATE;
+    }
+    
+    streams.forEach((stream, i) => stream.update(deltaTime, sparks[i]));
+    
+    glowSphere.position.copy(star.pos);
+    const pulse = 1 + Math.sin(time * 3) * 0.15;
+    glowSphere.scale.set(pulse, pulse, pulse);
+    
+    camera.position.lerp(new THREE.Vector3(
+        Math.sin(time * 0.04) * 5,
+        Math.cos(time * 0.03) * 4,
+        settings.cameraDistance + Math.cos(time * 0.04) * 2
+    ), 0.05);
+    camera.lookAt(0, 0, 0);
+    
+    composer.render();
+}
+
+// Wait for DOM to be ready before setting up controls
+window.addEventListener('DOMContentLoaded', initControls);
+
+// Start animation immediately
+animate();
+
+// Controls setup function
+function initControls() {
+    const speedInput = document.getElementById('speed');
+    const streamsInput = document.getElementById('streams');
+    const trailInput = document.getElementById('trail');
+    const bloomInput = document.getElementById('bloom');
+    const cameraInput = document.getElementById('camera');
+
+    if (!speedInput) return; // Safety check
+
+    speedInput.addEventListener('input', (e) => {
+        settings.speed = parseFloat(e.target.value);
+        document.getElementById('speed-val').textContent = settings.speed.toFixed(1);
+    });
+
+    streamsInput.addEventListener('input', (e) => {
+        settings.streamCount = parseInt(e.target.value);
+        document.getElementById('count-val').textContent = settings.streamCount;
+        initStreams();
+    });
+
+    trailInput.addEventListener('input', (e) => {
+        settings.maxParticles = parseInt(e.target.value);
+        document.getElementById('trail-val').textContent = settings.maxParticles;
+    });
+
+    bloomInput.addEventListener('input', (e) => {
+        settings.bloomStrength = parseFloat(e.target.value);
+        bloomPass.strength = settings.bloomStrength;
+        document.getElementById('bloom-val').textContent = settings.bloomStrength.toFixed(1);
+    });
+
+    cameraInput.addEventListener('input', (e) => {
+        settings.cameraDistance = parseFloat(e.target.value);
+        document.getElementById('camera-val').textContent = settings.cameraDistance;
+    });
+}
+
+// Controls
+function toggleControls() {
+    const controls = document.getElementById('controls');
+    if (controls) {
+        controls.style.display = controls.style.display === 'none' ? 'block' : 'none';
+    }
+}
+
+function applyPreset(preset) {
+    if (preset === 'classic') {
+        settings.speed = 1.0;
+        settings.bloomStrength = 1.0;
+        currentColors = colorPresets.classic;
+    } else if (preset === 'intense') {
+        settings.speed = 1.8;
+        settings.bloomStrength = 2.5;
+        currentColors = colorPresets.intense;
+    } else if (preset === 'gentle') {
+        settings.speed = 0.5;
+        settings.bloomStrength = 1.0;
+        currentColors = colorPresets.gentle;
+    } else if (preset === 'psychedelic') {
+        settings.speed = 2.5;
+        settings.bloomStrength = 2.8;
+        currentColors = colorPresets.psychedelic;
+    }
+    
+    updateControls();
+    bloomPass.strength = settings.bloomStrength;
+    streams.forEach((s, i) => s.rebuild(currentColors[i % currentColors.length]));
+}
+
+function updateControls() {
+    const speedEl = document.getElementById('speed');
+    const bloomEl = document.getElementById('bloom');
+    if (speedEl && bloomEl) {
+        speedEl.value = settings.speed;
+        bloomEl.value = settings.bloomStrength;
+        document.getElementById('speed-val').textContent = settings.speed.toFixed(1);
+        document.getElementById('bloom-val').textContent = settings.bloomStrength.toFixed(1);
+    }
+}
+
+// Resize handler
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    composer.setSize(window.innerWidth, window.innerHeight);
+});
