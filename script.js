@@ -189,7 +189,7 @@ class ParticleStream {
 
         // Initial velocity toward spark
         const toSpark = new THREE.Vector3().subVectors(spark.pos, star.pos);
-        const vel = toSpark.normalize().multiplyScalar(0.15);
+        const vel = toSpark.normalize().multiplyScalar(0.15); //originally 0.15
         
         this.positions.push(star.pos.x, star.pos.y, star.pos.z);
         this.colors.push(this.color.r, this.color.g, this.color.b);
@@ -218,12 +218,12 @@ class ParticleStream {
             const toSpark = new THREE.Vector3().subVectors(spark.pos, pos);
             const dist = toSpark.length();
             if (dist > 0.1) {
-                const force = toSpark.normalize().multiplyScalar(0.08 * deltaTime);
+                const force = toSpark.normalize().multiplyScalar(0.02 * deltaTime); //original 0.08
                 particle.velocity.add(force);
             }
             
             // Apply drag
-            particle.velocity.multiplyScalar(0.98);
+            particle.velocity.multiplyScalar(0.995);
             
             // Update position
             pos.add(particle.velocity.clone().multiplyScalar(deltaTime * 60));
@@ -281,7 +281,7 @@ const colorPresets = {
         new THREE.Color(0x00ff00),
         new THREE.Color(0xff9900)
     ],
-    gentle: [
+    simple: [
         new THREE.Color(0xb8d4e8),
         new THREE.Color(0xd4b8e8),
         new THREE.Color(0xe8d4b8),
@@ -289,7 +289,7 @@ const colorPresets = {
         new THREE.Color(0xe8b8d4),
         new THREE.Color(0xd4e8b8)
     ],
-    psychedelic: [
+    chaotic: [
         new THREE.Color(0xff0099),
         new THREE.Color(0x00ff99),
         new THREE.Color(0x9900ff),
@@ -419,19 +419,19 @@ function applyPreset(preset) {
     if (preset === 'classic') {
         settings.speed = 1.0;
         settings.bloomStrength = 1.0;
-        currentColors = colorPresets.classic;
-    } else if (preset === 'intense') {
-        settings.speed = 1.8;
-        settings.bloomStrength = 2.5;
         currentColors = colorPresets.intense;
-    } else if (preset === 'gentle') {
+    } else if (preset === 'intense') {
+        settings.speed = 1.0;
+        settings.bloomStrength = 1.5;
+        currentColors = colorPresets.intense;
+    } else if (preset === 'simple') {
         settings.speed = 0.5;
         settings.bloomStrength = 1.0;
-        currentColors = colorPresets.gentle;
-    } else if (preset === 'psychedelic') {
+        currentColors = colorPresets.simple;
+    } else if (preset === 'chaotic') {
         settings.speed = 2.5;
         settings.bloomStrength = 2.8;
-        currentColors = colorPresets.psychedelic;
+        currentColors = colorPresets.chaotic;
     }
     
     updateControls();
