@@ -1,17 +1,16 @@
-// Constants
 const MAX_ANGLES = 16384;
 const BIG_MYSTERY = 1800;
 
-// Settings
+//settings
 let settings = {
     speed: 1.0,
-    streamCount: 8,
+    streamCount: 10,
     maxParticles: 300,
-    bloomStrength: 1.5,
-    cameraDistance: 15
+    bloomStrength: 1.3,
+    cameraDistance: 20
 };
 
-// Scene setup
+//scene setup
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
 
@@ -22,7 +21,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// Post-processing
+//post-processing
 const composer = new THREE.EffectComposer(renderer);
 const renderScene = new THREE.RenderPass(scene, camera);
 composer.addPass(renderScene);
@@ -35,7 +34,7 @@ const bloomPass = new THREE.UnrealBloomPass(
 );
 composer.addPass(bloomPass);
 
-// Create particle texture
+//create particle texture
 function createParticleTexture() {
     const canvas = document.createElement('canvas');
     canvas.width = 64;
@@ -56,7 +55,7 @@ function createParticleTexture() {
 
 const particleTexture = createParticleTexture();
 
-// Star class
+//star class
 class Star {
     constructor() {
         this.pos = new THREE.Vector3(0, 0, 0);
@@ -104,7 +103,7 @@ class Star {
     }
 }
 
-// Spark class
+//spark class
 class Spark {
     constructor(streamIndex, totalStreams) {
         this.pos = new THREE.Vector3(0, 0, 0);
@@ -153,7 +152,7 @@ class Spark {
     }
 }
 
-// Particle Stream using Points
+//particle stream using points
 class ParticleStream {
     constructor(color, sparkIndex) {
         this.color = color;
@@ -180,14 +179,14 @@ class ParticleStream {
 
     addParticle(star, spark) {
         if (this.positions.length / 3 >= settings.maxParticles) {
-            // Remove oldest particle
+            // remove oldest particle
             this.positions.splice(0, 3);
             this.colors.splice(0, 3);
             this.sizes.shift();
             this.ages.shift();
         }
 
-        // Initial velocity toward spark
+        //initial velocity toward spark
         const toSpark = new THREE.Vector3().subVectors(spark.pos, star.pos);
         const vel = toSpark.normalize().multiplyScalar(0.15); //originally 0.15
         
@@ -202,7 +201,7 @@ class ParticleStream {
     }
 
     update(deltaTime, spark) {
-        // Update particle physics
+        //update particle physics
         for (let i = 0; i < this.ages.length; i++) {
             const particle = this.ages[i];
             particle.age += deltaTime;
@@ -214,7 +213,7 @@ class ParticleStream {
                 this.positions[idx + 2]
             );
             
-            // Gentle attraction to spark
+            //gentle attraction to spark
             const toSpark = new THREE.Vector3().subVectors(spark.pos, pos);
             const dist = toSpark.length();
             if (dist > 0.1) {
@@ -222,16 +221,16 @@ class ParticleStream {
                 particle.velocity.add(force);
             }
             
-            // Apply drag
+            //apply drag
             particle.velocity.multiplyScalar(0.995);
             
-            // Update position
+            //update position
             pos.add(particle.velocity.clone().multiplyScalar(deltaTime * 60));
             this.positions[idx] = pos.x;
             this.positions[idx + 1] = pos.y;
             this.positions[idx + 2] = pos.z;
             
-            // Fade and shrink over time
+            //fade and shrink over time
             const lifeFactor = 1 - Math.min(particle.age / 3.0, 1.0);
             const fade = Math.pow(lifeFactor, 0.5);
             
@@ -242,7 +241,7 @@ class ParticleStream {
             this.sizes[i] = 1.0 * (0.3 + lifeFactor * 0.7);
         }
         
-        // Update geometry
+        //update geometry
         this.geometry.setAttribute('position', new THREE.Float32BufferAttribute(this.positions, 3));
         this.geometry.setAttribute('color', new THREE.Float32BufferAttribute(this.colors, 3));
         this.geometry.setAttribute('size', new THREE.Float32BufferAttribute(this.sizes, 1));
@@ -257,21 +256,25 @@ class ParticleStream {
         this.points = new THREE.Points(this.geometry, this.material);
         scene.add(this.points);
     }
+
+    updateColor(newColor) {
+        this.color = newColor;
+    }
 }
 
-// Initialize
+//initialize
 const star = new Star();
 let sparks = [];
 let streams = [];
 
 const colorPresets = {
     classic: [
-        new THREE.Color(0xff6b9d),
-        new THREE.Color(0x4ecdc4),
-        new THREE.Color(0xffd93d),
-        new THREE.Color(0x95e1d3),
-        new THREE.Color(0xc77dff),
-        new THREE.Color(0xff9a76)
+        new THREE.Color(0x8b4560),  //pink
+        new THREE.Color(0x2d7d78),  //teal
+        new THREE.Color(0x9d7e1f),  //yellow
+        new THREE.Color(0x5a8270),  //mint
+        new THREE.Color(0x7a4d9d),  //purple
+        new THREE.Color(0x9d6045)   //coral
     ],
     intense: [
         new THREE.Color(0xff0066),
@@ -281,14 +284,7 @@ const colorPresets = {
         new THREE.Color(0x00ff00),
         new THREE.Color(0xff9900)
     ],
-    simple: [
-        new THREE.Color(0xb8d4e8),
-        new THREE.Color(0xd4b8e8),
-        new THREE.Color(0xe8d4b8),
-        new THREE.Color(0xb8e8d4),
-        new THREE.Color(0xe8b8d4),
-        new THREE.Color(0xd4e8b8)
-    ],
+    multicolored: 'ANIMATED',
     chaotic: [
         new THREE.Color(0xff0099),
         new THREE.Color(0x00ff99),
@@ -300,14 +296,16 @@ const colorPresets = {
 };
 
 let currentColors = colorPresets.classic;
+let isAnimatedColors = false;
+
 
 function initStreams() {
-    // Clear existing
+    //clear existing
     streams.forEach(s => scene.remove(s.points));
     streams = [];
     sparks = [];
     
-    // Create new
+    //create new
     for (let i = 0; i < settings.streamCount; i++) {
         sparks.push(new Spark(i, settings.streamCount));
         streams.push(new ParticleStream(currentColors[i % currentColors.length], i));
@@ -316,7 +314,7 @@ function initStreams() {
 
 initStreams();
 
-// Center glow
+//center glow
 const glowGeometry = new THREE.SphereGeometry(0.3, 16, 16);
 const glowMaterial = new THREE.MeshBasicMaterial({
     color: 0xffffff,
@@ -327,10 +325,10 @@ const glowMaterial = new THREE.MeshBasicMaterial({
 const glowSphere = new THREE.Mesh(glowGeometry, glowMaterial);
 scene.add(glowSphere);
 
-// Animation loop
+//animation loop
 let time = 0;
 let emissionTimer = 0;
-const EMISSION_RATE = 1 / 60;
+const EMISSION_RATE = 1 / 90;
 
 function animate() {
     requestAnimationFrame(animate);
@@ -349,8 +347,16 @@ function animate() {
     
     streams.forEach((stream, i) => stream.update(deltaTime, sparks[i]));
     
+    if (isAnimatedColors) {
+        streams.forEach((stream, i) => {
+            const hue = ((time * 0.15 + i / streams.length) % 1);
+            const color = new THREE.Color().setHSL(hue, 0.85, 0.55);
+            stream.updateColor(color);
+        });
+    }
+
     glowSphere.position.copy(star.pos);
-    const pulse = 1 + Math.sin(time * 3) * 0.15;
+    const pulse = 1 + Math.sin(time * 3) * 0.10;
     glowSphere.scale.set(pulse, pulse, pulse);
     
     camera.position.lerp(new THREE.Vector3(
@@ -363,13 +369,13 @@ function animate() {
     composer.render();
 }
 
-// Wait for DOM to be ready before setting up controls
+//wait for DOM to be ready before setting up controls
 window.addEventListener('DOMContentLoaded', initControls);
 
-// Start animation immediately
+//start animation immediately
 animate();
 
-// Controls setup function
+//controls setup function
 function initControls() {
     const speedInput = document.getElementById('speed');
     const streamsInput = document.getElementById('streams');
@@ -377,7 +383,7 @@ function initControls() {
     const bloomInput = document.getElementById('bloom');
     const cameraInput = document.getElementById('camera');
 
-    if (!speedInput) return; // Safety check
+    if (!speedInput) return;
 
     speedInput.addEventListener('input', (e) => {
         settings.speed = parseFloat(e.target.value);
@@ -407,7 +413,7 @@ function initControls() {
     });
 }
 
-// Controls
+//controls
 function toggleControls() {
     const controls = document.getElementById('controls');
     if (controls) {
@@ -420,23 +426,29 @@ function applyPreset(preset) {
         settings.speed = 1.0;
         settings.bloomStrength = 1.0;
         currentColors = colorPresets.intense;
+        isAnimatedColors = false;
     } else if (preset === 'intense') {
         settings.speed = 1.0;
         settings.bloomStrength = 1.5;
         currentColors = colorPresets.intense;
-    } else if (preset === 'simple') {
-        settings.speed = 0.5;
-        settings.bloomStrength = 1.0;
-        currentColors = colorPresets.simple;
+        isAnimatedColors = false;
+    } else if (preset === 'multicolored') {
+        settings.speed = 1.2;
+        settings.bloomStrength = 1.5;
+        isAnimatedColors = true;
     } else if (preset === 'chaotic') {
         settings.speed = 2.5;
         settings.bloomStrength = 2.8;
         currentColors = colorPresets.chaotic;
+        isAnimatedColors = false;
     }
     
     updateControls();
     bloomPass.strength = settings.bloomStrength;
-    streams.forEach((s, i) => s.rebuild(currentColors[i % currentColors.length]));
+
+    if (!isAnimatedColors) {
+        streams.forEach((s, i) => s.rebuild(currentColors[i % currentColors.length]));
+    }
 }
 
 function updateControls() {
@@ -450,7 +462,7 @@ function updateControls() {
     }
 }
 
-// Resize handler
+//resize handler
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
