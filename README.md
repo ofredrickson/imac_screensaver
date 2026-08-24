@@ -3,6 +3,11 @@
 2. Run the code
 3. Select your preferred browser to view the live project
 
+**OR**
+
+View my recorded demo [here](https://drive.google.com/file/d/1R9TkZDb7xTyDo65WZ8y5gf_4i2mMSzeN/view?usp=sharing)
+
+--------
 As a kid I was always mesmerized by the wispy colorful orb floating around the neglected screens of the iMacs in my school's computer lab.
 
 Years later, when I had to choose a project topic for my Computer Graphics class I remembered how much I loved that old screensaver. 
